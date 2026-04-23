@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>海草观察 - 智能监测与蓝碳交易平台</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <style>
+        /* ================= 基础与全局样式 ================= */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: "Microsoft YaHei", sans-serif; display: flex; height: 100vh; background-color: #f0f4f8; overflow: hidden; }
+        
+        .sidebar { width: 260px; background-color: #0b2e59; color: white; display: flex; flex-direction: column; flex-shrink: 0; z-index: 10; }
+        .sidebar-header { padding: 25px 20px; font-size: 1.5rem; font-weight: bold; border-bottom: 1px solid #1a457b; }
+        .nav-menu { padding: 20px 10px; display: flex; flex-direction: column; gap: 10px; }
+        .nav-item { padding: 15px; background-color: #1a457b; border-radius: 8px; cursor: pointer; transition: 0.3s; user-select: none; }
+        .nav-item:hover { background-color: #2a6bb5; }
+        .nav-item.active { background-color: #2a6bb5; font-weight: bold; border-left: 4px solid #f39c12; }
+
+        .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+        .topbar { height: 70px; background-color: white; display: flex; align-items: center; justify-content: space-between; padding: 0 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); z-index: 5; }
+        .topbar-title { font-size: 1.2rem; font-weight: bold; color: #333; }
+        .vip-controls { background-color: #f39c12; color: white; padding: 8px 15px; border-radius: 20px; font-size: 0.9rem; cursor: pointer; }
+
+        .content-panel { flex: 1; padding: 25px; overflow-y: auto; }
+        .card { background-color: white; border-radius: 12px; padding: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); height: 100%; display: flex; flex-direction: column; min-height: 600px; }
+        .panel { display: none; flex: 1; flex-direction: column; height: 100%; }
+        .panel.active { display: flex; }
+
+        /* ================= 模块 1 样式 (地图) ================= */
+        #three-container { width: 100%; flex: 1; background-color: #eef2f5; border-radius: 8px; position: relative; overflow: hidden; cursor: crosshair; }
+        #three-container:active { cursor: grabbing; }
+        .monitor-overlay { position: absolute; bottom: 20px; right: 20px; width: 250px; height: 140px; background-color: rgba(0, 0, 0, 0.75); border: 2px solid #2a6bb5; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.3); pointer-events: none; transition: border-color 0.3s; }
+        .monitor-header { background: #2a6bb5; color: white; font-size: 12px; padding: 5px 10px; display: flex; justify-content: space-between; transition: background-color 0.3s; }
+        .monitor-video { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #aaa; font-size: 12px; text-align: center; background-image: radial-gradient(circle, #222 1px, transparent 1px); background-size: 20px 20px; line-height: 1.4; padding: 5px;}
+        .map-legend { position: absolute; top: 20px; right: 20px; background: rgba(255,255,255,0.9); padding: 10px; border-radius: 8px; font-size: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); pointer-events: none; }
+        .legend-item { display: flex; align-items: center; margin-bottom: 5px; }
+        .color-box { width: 14px; height: 14px; margin-right: 8px; border-radius: 2px; }
+        .click-hint { position: absolute; top: 20px; left: 20px; background: rgba(11, 46, 89, 0.8); color: white; padding: 8px 15px; border-radius: 20px; font-size: 13px; pointer-events: none; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(11,46,89, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(11,46,89, 0); } 100% { box-shadow: 0 0 0 0 rgba(11,46,89, 0); } }
+
+        /* ================= 综合指挥舱样式 (模块 2 融合) ================= */
+        .command-center-layout { display: flex; gap: 25px; flex: 1; min-height: 0; }
+        .cc-left { flex: 6; display: flex; flex-direction: column; overflow-y: auto; padding-right: 15px; }
+        .cc-right { flex: 4; display: flex; flex-direction: column; gap: 20px; }
+
+        .health-header-wrapper { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; }
+        #mini-map-container { width: 180px; height: 120px; background: #eef2f5; border: 2px solid #2a6bb5; border-radius: 8px; overflow: hidden; position: relative; box-shadow: 0 4px 15px rgba(0,0,0,0.1); flex-shrink: 0; }
+        .mini-map-label { position: absolute; top: 5px; left: 5px; background: #e74c3c; color: white; padding: 2px 6px; font-size: 10px; border-radius: 4px; pointer-events: none; z-index: 2; font-weight: bold;}
+        
+        .blue-carbon-card { background: #f0f8ff; border: 1px solid #3498db; padding: 15px; border-radius: 10px; margin-bottom: 20px; }
+        .bc-grid { display: flex; justify-content: space-around; align-items: center; margin-top: 10px; }
+        .bc-item { text-align: center; }
+        .bc-label { font-size: 0.85rem; color: #666; margin-bottom: 5px; }
+        .bc-value { font-size: 1.8rem; font-weight: bold; color: #2980b9; }
+        
+        /* 终极修改：强制 6 列排成一排 */
+        .health-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 20px; }
+        .metric-card { background: #f8fbff; border: 1px solid #e1e9f5; border-radius: 8px; padding: 10px 5px; text-align: center; transition: 0.3s; min-width: 0; }
+        .metric-card.updating { background: #fff3cd !important; border-color: #ffe69c !important; }
+        /* 调整数值与文字大小，防止拥挤换行 */
+        .metric-value { font-size: 1.1rem; font-weight: bold; color: #0b2e59; margin: 8px 0; transition: color 0.3s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .metric-label { font-size: 0.75rem; color: #666; white-space: nowrap; }
+
+        .timeline-container { background: #fff; padding: 15px; border-radius: 10px; border: 1px solid #eee; margin-bottom: 15px;}
+        .timeline-slider { width: 100%; height: 6px; border-radius: 4px; background: #e0e0e0; outline: none; -webkit-appearance: none; margin: 15px 0; cursor: pointer; }
+        .timeline-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: #2a6bb5; border-radius: 50%; cursor: pointer; border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .timeline-labels { position: relative; height: 15px; color: #888; font-size: 11px; margin-top: 5px; }
+        .timeline-labels span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+        .timeline-labels span.tick-30d { left: 0; transform: translateX(0); }
+        .timeline-labels span.tick-15d { left: 50%; }
+        .timeline-labels span.tick-7d  { left: 76.66%; }
+        .timeline-labels span.tick-now { right: 0; left: auto; transform: translateX(0); color: #2a6bb5; font-weight: bold; }
+
+        /* 左侧底部的无人机视频区 */
+        .drone-video-box { height: 260px; width: 100%; background-color: #0b192c; border-radius: 8px; border: 2px solid #2c3e50; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 0 50px rgba(0,0,0,0.8); flex-shrink: 0;}
+        .scan-line { position: absolute; top:0; left:0; right:0; bottom:0; background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06)); background-size: 100% 4px, 6px 100%; pointer-events: none; z-index: 2; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        @keyframes loadLine { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+        /* 右侧：仪表盘容器与综合安全卡片 */
+        #gauge-chart-container { height: 280px; width: 100%; background: #fff; border-radius: 8px; border: 1px solid #e1e9f5; box-shadow: 0 4px 8px rgba(0,0,0,0.02); }
+
+        .combined-score-card { flex: 1; border: 3px dashed #bdc3c7; border-radius: 8px; padding: 20px; display: flex; flex-direction: column; align-items: center; transition: all 0.5s ease; justify-content: center; min-height: 250px;}
+        #warn-score { font-size: 4rem; font-weight: 900; transition: color 0.5s ease; margin: 5px 0;}
+        #warn-status-text { font-size: 1.1rem; font-weight: bold; margin-bottom: 10px; transition: color 0.5s; padding: 5px 15px; border-radius: 20px; background: #fff;}
+        #warn-risk-box { width: 100%; background: rgba(255,255,255,0.9); border-radius: 8px; padding: 12px; display: none; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-top: 10px; }
+        #warn-risk-list { font-size: 0.85rem; padding-left: 20px; line-height: 1.5; margin-top: 8px; }
+
+        .btn-return-map { padding: 8px 15px; background: #fff; border: 2px solid #2a6bb5; color: #2a6bb5; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 0.85rem; transition: all 0.3s; display: inline-flex; align-items: center; gap: 5px; float: right; }
+        .btn-return-map:hover { background: #2a6bb5; color: #fff; box-shadow: 0 4px 10px rgba(42, 107, 181, 0.3); }
+
+        /* ================= 模块 3 (蓝碳) & 4 (维护) 补充样式 ================= */
+        .grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+        .grid-container-maint { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+        .sub-card { background: white; padding: 20px; border-radius: 10px; border: 1px solid #e1e9f5; box-shadow: 0 4px 8px rgba(0,0,0,0.02); }
+        .sub-card h3 { margin-top: 0; color: #0b2e59; border-bottom: 2px solid #eee; padding-bottom: 10px; font-size: 1.1rem; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; color: #555; font-weight: bold; font-size: 0.9rem;}
+        .form-group select, .form-group input[type="number"] { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        .form-group input[type="range"] { width: 100%; margin-top: 5px; }
+        .btn-calc { background-color: #27ae60; color: white; border: none; padding: 12px 20px; border-radius: 5px; cursor: pointer; font-size: 1rem; width: 100%; margin-top: 10px; font-weight: bold; transition: 0.3s;}
+        .btn-calc:hover { background-color: #219150; }
+        .result-box { background-color: #f8fbff; padding: 15px; border-radius: 8px; text-align: center; margin-top: 15px; border: 1px solid #e1e9f5;}
+        .result-value { font-size: 2.2rem; color: #2a6bb5; font-weight: bold; margin: 10px 0; }
+        
+        .alert-item { padding: 15px; border-radius: 8px; margin-bottom: 15px; display: flex; align-items: flex-start; gap: 15px; }
+        .alert-high { background-color: #fff3f3; border-left: 4px solid #e74c3c; }
+        .alert-medium { background-color: #fffaf0; border-left: 4px solid #f39c12; }
+        .alert-info { background-color: #f8fbff; border-left: 4px solid #2a6bb5; }
+        .alert-icon { font-size: 1.5rem; }
+        .alert-content h4 { margin: 0 0 5px 0; color: #333; font-size: 1rem;}
+        .alert-content p { margin: 0; font-size: 0.9rem; color: #555; line-height: 1.5; }
+        .device-list { display: flex; flex-direction: column; gap: 12px; }
+        .device-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem; color: #444;}
+        .progress-bar-bg { flex: 1; height: 8px; background-color: #e9ecef; border-radius: 4px; margin: 0 15px; overflow: hidden;}
+        .progress-bar-fill { height: 100%; border-radius: 4px; }
+        .fill-good { background-color: #27ae60; width: 92%; }
+        .fill-warn { background-color: #f39c12; width: 45%; }
+        .fill-danger { background-color: #e74c3c; width: 15%; }
+        .task-list { list-style: none; padding: 0; margin: 0; }
+        .task-list li { border-bottom: 1px dashed #eee; padding: 12px 0; font-size: 0.9rem; color: #444; display: flex; align-items: flex-start;}
+        .task-list li:last-child { border-bottom: none; }
+        .task-tag { font-size: 0.75rem; padding: 4px 8px; border-radius: 12px; background: #eef2f5; margin-right: 10px; color: #2a6bb5; white-space: nowrap; font-weight: bold;}
+        .btn-action { margin-top: 15px; width: 100%; padding: 12px; background-color: #0b2e59; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.3s;}
+        .btn-action:hover { background-color: #1a457b; }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <div class="sidebar-header">🌿 海草观察</div>
+        <div class="nav-menu">
+            <div class="nav-item active" data-target="panel-map">📍 可视化分布地图</div>
+            <div class="nav-item" data-target="panel-combined">📊 综合监控与预警中心</div>
+            <div class="nav-item" data-target="panel-carbon">💰 智能蓝碳储量估算</div>
+            <div class="nav-item" data-target="panel-maintenance">🔧 智能维护系统</div>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="topbar">
+            <div class="topbar-title" id="current-page-title">控制台总览 - 可视化分布地图</div>
+            <div class="vip-controls">👑 VIP: 开启水下无人机操控</div>
+        </div>
+
+        <div class="content-panel">
+            <div class="card" style="padding: 20px;">
+                
+                <div id="panel-map" class="panel active">
+                    <div style="margin-bottom: 15px;">
+                        <h2>📍 3D海底地形与海草密度分布</h2>
+                        <p style="color: #666; font-size: 0.9rem;">
+                            提示：点击左键旋转视图，滚轮缩放。目前展示的是温带/热带典型浅海大陆架。<br>
+                            👉 <strong style="color: #e74c3c;">全局联动：请鼠标点击下方 3D 地貌任意区域，将自动调度无人机并同步跳转至【综合指挥舱】。</strong>
+                        </p>
+                    </div>
+                    <div id="three-container">
+                        <div class="click-hint">🖱️ 尝试点击 3D 表面任意区域</div>
+                        <div class="map-legend">
+                            <div class="legend-item"><div class="color-box" style="background:#a50026"></div>密集 (80-100%)</div>
+                            <div class="legend-item"><div class="color-box" style="background:#fdae61"></div>较多 (40-80%)</div>
+                            <div class="legend-item"><div class="color-box" style="background:#a6d96a"></div>少量 (10-40%)</div>
+                            <div class="legend-item"><div class="color-box" style="background:#313695"></div>浅海/裸沙 (0-10%)</div>
+                        </div>
+                        
+                        <div class="monitor-overlay" id="map-drone-monitor">
+                            <div class="monitor-header">
+                                <span id="monitor-title">LIVE: 全局巡航模式</span>
+                                <span id="monitor-rec" style="color: #ff4757;">● REC</span>
+                            </div>
+                            <div class="monitor-video" id="monitor-content">
+                                <br>等待用户指定探测目标...<br>请点击左侧浅海地图表面
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="panel-combined" class="panel">
+                    <div style="margin-bottom: 15px; border-bottom: 2px solid #eee; padding-bottom: 10px;">
+                        <button onclick="returnToMapAndReset()" class="btn-return-map">🔙 返回主地图重选</button>
+                        <h2 style="color: #0b2e59;">📊 综合监控与预警中心：区域 <span id="current-zone" style="color:#e74c3c;">A-03</span></h2>
+                        <p style="color: #666; font-size: 0.85rem; margin-top: 5px;">【硬核时序引擎】底层传感器与AI生态评估实现零延迟秒级测算；深海无人机光学影像受物理链路限制，呈现延时加载。</p>
+                    </div>
+
+                    <div class="command-center-layout">
+                        <div class="cc-left">
+                            <div class="health-header-wrapper">
+                                <div style="flex: 1; padding-right: 15px;">
+                                    <h3 style="color: #333; font-size: 1.1rem; margin-bottom: 8px;">生态固碳实时监测 (AI 估算)</h3>
+                                    <div class="blue-carbon-card">
+                                        <div class="bc-grid">
+                                            <div class="bc-item">
+                                                <div class="bc-label">当前蓝碳总储量</div>
+                                                <div class="bc-value" id="val-blue-carbon">12.50 <span style="font-size:1rem; color:#7f8c8d;">t/ha</span></div>
+                                            </div>
+                                            <div style="height: 40px; width: 1px; background: #cce5ff;"></div>
+                                            <div class="bc-item">
+                                                <div class="bc-label">净碳汇差值 (吸收减释放)</div>
+                                                <div class="bc-value" style="color: #27ae60;" id="val-net-carbon">+ 3.20 <span style="font-size:1rem; color:#7f8c8d;">t/ha</span></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="mini-map-container">
+                                    <div class="mini-map-label" id="mini-map-zone-label">🎯 坐标锁定</div>
+                                </div>
+                            </div>
+
+                            <h3 style="color: #333; font-size: 1.1rem; margin-bottom: 10px;">底层传感器阵列</h3>
+                            <div class="health-grid" id="metrics-grid">
+                                <div class="metric-card"><div class="metric-label">海水温度</div><div class="metric-value" id="val-temp">26.5°C</div><div style="height:3px; background:#ddd;"><div id="bar-temp" style="height:100%; width:60%; background:#f39c12; transition: width 0.5s;"></div></div></div>
+                                <div class="metric-card"><div class="metric-label">海水盐度</div><div class="metric-value" id="val-salinity">33.2 PSU</div><div style="height:3px; background:#ddd;"><div id="bar-salinity" style="height:100%; width:80%; background:#3498db; transition: width 0.5s;"></div></div></div>
+                                <div class="metric-card"><div class="metric-label">水质 (pH)</div><div class="metric-value" id="val-water">8.1</div><div style="height:3px; background:#ddd;"><div id="bar-water" style="height:100%; width:80%; background:#2ecc71; transition: width 0.5s;"></div></div></div>
+                                <div class="metric-card"><div class="metric-label">光照强度</div><div class="metric-value" id="val-light">1200 lux</div><div style="height:3px; background:#ddd;"><div id="bar-light" style="height:100%; width:70%; background:#f1c40f; transition: width 0.5s;"></div></div></div>
+                                <div class="metric-card"><div class="metric-label">健康状况</div><div class="metric-value" id="val-health-status-text" style="color:#27ae60;">优(88%)</div><div style="height:3px; background:#ddd;"><div id="bar-health" style="height:100%; width:88%; background:#27ae60; transition: width 0.5s;"></div></div></div>
+                                <div class="metric-card"><div class="metric-label">水体浑浊度</div><div class="metric-value" id="val-turbidity">5.4 NTU</div><div style="height:3px; background:#ddd;"><div id="bar-turbidity" style="height:100%; width:30%; background:#95a5a6; transition: width 0.5s;"></div></div></div>
+                            </div>
+
+                            <div class="timeline-container">
+                                <div style="font-weight: bold; font-size: 0.85rem; color: #444;">历史时间节点穿透验证：<span id="current-time-label" style="color: #e74c3c;">实时数据 (今天)</span></div>
+                                <input type="range" min="0" max="30" value="30" class="timeline-slider" id="time-slider">
+                                <div class="timeline-labels">
+                                    <span class="tick-30d">1个月前</span><span class="tick-15d">15天前</span><span class="tick-7d">7天前</span><span class="tick-now">今天</span>
+                                </div>
+                            </div>
+
+                            <div class="drone-video-box" id="drone-camera-feed">
+                                </div>
+                        </div>
+
+                        <div class="cc-right">
+                            <div id="gauge-chart-container"></div>
+
+                            <div class="combined-score-card" id="warn-result-card">
+                                <h3 style="color: #34495e; margin: 0; font-size: 1.1rem;">AI 综合生态与安全评估</h3>
+                                <div id="warn-score">--</div>
+                                <div id="warn-status-text">[ 数据运算中 ]</div>
+                                
+                                <div id="warn-risk-box">
+                                    <h4 style="color: inherit; margin-bottom: 5px; border-bottom: 1px solid currentColor; padding-bottom: 5px;">⚠️ 发现潜在生态退化风险：</h4>
+                                    <ul id="warn-risk-list" style="color: inherit;"></ul>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div id="panel-carbon" class="panel">
+                    <div style="margin-bottom: 20px;">
+                        <h2>💰 智能蓝碳储量估算</h2>
+                        <p style="color: #666; font-size: 0.9rem; margin-top: 5px;">基于海草种类、树龄、覆盖率等参数，运用 AI 模型快速估算当前区域的蓝碳储量与额外减排潜力。</p>
+                    </div>
+
+                    <div class="grid-container">
+                        <div class="sub-card">
+                            <h3 style="display:flex; justify-content:space-between;">蓝碳参数录入 <span>🌱</span></h3>
+                            <div class="form-group">
+                                <label>海草种类 (Species)</label>
+                                <select id="calc-species"><option value="1.2">泰来草 (Thalassia hemprichii)</option><option value="1.5">海菖蒲 (Enhalus acoroides)</option></select>
+                            </div>
+                            <div class="form-group">
+                                <label>平均年龄预估 (Age)</label>
+                                <input type="number" id="calc-age" value="3" placeholder="例如: 3 (年)">
+                            </div>
+                            <div class="form-group">
+                                <label>植被覆盖密度 (<span id="calc-density-label">75</span>%)</label>
+                                <input type="range" id="calc-density" min="0" max="100" value="75" oninput="document.getElementById('calc-density-label').innerText=this.value">
+                            </div>
+                            <div class="form-group">
+                                <label>区域生态参数 (Zone ID)</label>
+                                <select id="calc-zone"><option>东南亚核心监测区</option><option>东南亚生态修复区</option></select>
+                            </div>
+                            <button class="btn-calc" id="btn-calc-carbon" onclick="calculateCarbon()">✨ AI 智能测算当前区域</button>
+                        </div>
+            
+                        <div class="sub-card">
+                            <h3 style="display:flex; justify-content:space-between;">模型测算结果 <span>📊</span></h3>
+                            <p style="color: #666; font-size: 0.85rem; margin-top: 5px;">根据国际标准验证模型计算，基于当前保护措施避免的碳排放。</p>
+                            
+                            <div class="result-box">
+                                <div style="font-size: 0.9rem; color: #555;">单位面积碳储量评估</div>
+                                <div class="result-value" id="res-carbon-total">-- <span style="font-size:1.2rem;">tC/ha</span></div>
+                            </div>
+                            <div class="result-box" style="background-color: #eafaf1; border-color: #d5f5e3;">
+                                <div style="font-size: 0.9rem; color: #555;">额外减排量预测 (年度)</div>
+                                <div class="result-value" id="res-carbon-extra" style="color: #27ae60;">-- <span style="font-size:1.2rem;">tCO2e</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="panel-maintenance" class="panel">
+                    <div style="margin-bottom: 20px;">
+                        <h2>🔧 智能维护系统 (AI Predictive Maintenance)</h2>
+                        <p style="color: #666; font-size: 0.9rem; margin-top: 5px;">基于硬件运行数据、环境变化及历史规律，为您提供前瞻性的运维指导。</p>
+                    </div>
+
+                    <div class="grid-container-maint">
+                        <div class="sub-card" style="grid-column: 1 / 2;">
+                            <h3 style="display:flex; justify-content:space-between; align-items:center;">
+                                AI 未来 7 天维护预测 
+                                <span style="font-size: 0.8rem; background: #eef2f5; padding: 4px 10px; border-radius: 12px; color: #555;">🤖 正在实时监控中</span>
+                            </h3>
+            
+                            <div class="alert-item alert-high">
+                                <div class="alert-icon">⚠️</div>
+                                <div class="alert-content">
+                                    <h4>水质浑浊导致太阳能板充电效率骤降</h4>
+                                    <p><strong>预测：</strong> 受近期洋流影响，A-01区水下无人机(设备号 #02) 的太阳能板表面生物附着率预计在 3 天内超过 40%。<br><strong>后果：</strong> 续航能力将下降 50%，可能导致巡航任务中断。</p>
+                                </div>
+                            </div>
+            
+                            <div class="alert-item alert-medium">
+                                <div class="alert-icon">🔋</div>
+                                <div class="alert-content">
+                                    <h4>沉积物传感器电池寿命预警</h4>
+                                    <p><strong>预测：</strong> 位于 B-02 区的 3 号传感器群组，其内置电池的电压衰减曲线异常。<br><strong>后果：</strong> 预计在 12 天后电量耗尽，将造成该区域碳储量数据收集断层。</p>
+                                </div>
+                            </div>
+            
+                            <div class="alert-item alert-info">
+                                <div class="alert-icon">🌪️</div>
+                                <div class="alert-content">
+                                    <h4>极端天气规避联动</h4>
+                                    <p><strong>预测：</strong> 气象 API 提示本周末海区有热带低压形成，底层海流流速将超过无人机抗流阈值。<br><strong>建议：</strong> 已为您生成本周四的提前召回计划。</p>
+                                </div>
+                            </div>
+                        </div>
+            
+                        <div style="display: flex; flex-direction: column; gap: 20px; grid-column: 2 / 3;">
+                            <div class="sub-card">
+                                <h3>资产健康度总览</h3>
+                                <div class="device-list">
+                                    <div class="device-row">
+                                        <span>无人机 #01</span><div class="progress-bar-bg"><div class="progress-bar-fill fill-good"></div></div><span>92%</span>
+                                    </div>
+                                    <div class="device-row">
+                                        <span>无人机 #02 (需维护)</span><div class="progress-bar-bg"><div class="progress-bar-fill fill-warn"></div></div><span style="color:#f39c12; font-weight:bold;">45%</span>
+                                    </div>
+                                    <div class="device-row">
+                                        <span>传感器节点组 A</span><div class="progress-bar-bg"><div class="progress-bar-fill fill-good" style="width: 88%;"></div></div><span>88%</span>
+                                    </div>
+                                    <div class="device-row">
+                                        <span>传感器节点组 B</span><div class="progress-bar-bg"><div class="progress-bar-fill fill-danger"></div></div><span style="color:#e74c3c; font-weight:bold;">15%</span>
+                                    </div>
+                                </div>
+                            </div>
+            
+                            <div class="sub-card" style="flex: 1;">
+                                <h3>AI 推荐维护工单</h3>
+                                <ul class="task-list">
+                                    <li><span class="task-tag">本周四出海</span> 赴 A-01 区回收无人机 #02 进行表面清理。</li>
+                                    <li><span class="task-tag">本周四出海</span> 顺路更换 B-02 区的传感器电池组。</li>
+                                    <li><span class="task-tag">系统自动</span> 调整无人机 #01 的巡航深度以规避周五洋流。</li>
+                                </ul>
+                                <button class="btn-action">✅ 一键批准并派发工单</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* ================= 蓝碳估算交互逻辑 ================= */
+        function calculateCarbon() {
+            const btn = document.getElementById('btn-calc-carbon');
+            btn.innerText = "⏳ 正在调用 AI 模型测算...";
+            btn.style.opacity = "0.7";
+            btn.style.pointerEvents = "none";
+
+            setTimeout(() => {
+                const density = document.getElementById('calc-density').value;
+                let age = document.getElementById('calc-age').value;
+                if (!age || age <= 0) age = 1;
+
+                const baseFactor = 80;
+                const total = (baseFactor + (density * 0.8) + (age * 4.5) + (Math.random() * 5)).toFixed(1);
+                const extra = (total * 0.09 + Math.random() * 2).toFixed(1);
+
+                document.getElementById('res-carbon-total').innerHTML = `${total} <span style="font-size:1.2rem;">tC/ha</span>`;
+                document.getElementById('res-carbon-extra').innerHTML = `+ ${extra} <span style="font-size:1.2rem;">tCO2e</span>`;
+
+                btn.innerText = "✨ AI 智能测算当前区域";
+                btn.style.opacity = "1";
+                btn.style.pointerEvents = "auto";
+            }, 1200);
+        }
+
+        /* ================= 全局状态与 ECharts 初始化 ================= */
+        let globalSelectedPoint = new THREE.Vector3(0, 1.5, 0); 
+        let globalRegionCode = "A-03";
+        let isSimulating = false;
+        
+        let gaugeChart = null;
+        function initGaugeChart() {
+            gaugeChart = echarts.init(document.getElementById('gauge-chart-container'));
+            var option = {
+                series: [{
+                    type: 'gauge',
+                    startAngle: 180,
+                    endAngle: 0,
+                    min: 0,
+                    max: 100,
+                    splitNumber: 5,
+                    axisLine: {
+                        lineStyle: {
+                            width: 25,
+                            color: [
+                                [0.2, '#e74c3c'],  // 0-20 红色
+                                [0.4, '#e67e22'],  // 20-40 橙色
+                                [0.7, '#f1c40f'],  // 40-70 黄色
+                                [0.85, '#2ecc71'], // 70-85 浅绿
+                                [1, '#27ae60']     // 85-100 深绿
+                            ]
+                        }
+                    },
+                    pointer: {
+                        icon: 'path://M12.8,0.7l12,40.1H0.7L12.8,0.7z',
+                        length: '75%',
+                        width: 10,
+                        offsetCenter: [0, '-10%'],
+                        itemStyle: { color: '#2c3e50' }
+                    },
+                    axisTick: { length: 12, lineStyle: { color: 'auto', width: 2 } },
+                    splitLine: { length: 20, lineStyle: { color: 'auto', width: 3 } },
+                    axisLabel: { color: '#464646', fontSize: 13, distance: -35 },
+                    title: { offsetCenter: [0, '25%'], fontSize: 14, color: '#666', fontWeight: 'bold' },
+                    detail: {
+                        fontSize: 32,
+                        offsetCenter: [0, '-10%'],
+                        valueAnimation: true,
+                        formatter: '{value}',
+                        color: 'inherit'
+                    },
+                    data: [{ value: 85, name: 'AI 综合评分' }]
+                }]
+            };
+            gaugeChart.setOption(option);
+        }
+
+        /* ================= 1. 主地图 3D 逻辑 ================= */
+        let scene, camera, renderer, controls;
+        const container = document.getElementById('three-container');
+        let mainTerrainMesh; 
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        function createTerrainGeometry(width, height, widthSegments, heightSegments) {
+            const geometry = new THREE.PlaneGeometry(width, height, widthSegments, heightSegments);
+            geometry.rotateX(-Math.PI / 2);
+            const positionAttribute = geometry.attributes.position;
+            const colors = [];
+            const color = new THREE.Color();
+
+            for (let i = 0; i < positionAttribute.count; i++) {
+                let x = positionAttribute.getX(i);
+                let z = positionAttribute.getZ(i);
+                
+                let shelfSlope = -x * 0.08;
+                let dunes = Math.sin(x * 0.4) * Math.cos(z * 0.4) * 0.6;
+                let ripples = Math.sin(x * 1.5) * Math.cos(z * 1.5) * 0.15;
+                let noise = (Math.random() - 0.5) * 0.15;
+
+                let h = shelfSlope + dunes + ripples + noise;
+                positionAttribute.setY(i, h);
+
+                let densityBase = (Math.sin(x * 0.7 + z * 0.5) * Math.cos(z * 0.8) + 1) * 0.5;
+                let density = densityBase * 0.6 + 0.4 + (h * 0.1) + (Math.random() * 0.1); 
+
+                if (density > 0.85) color.setHex(0xa50026);      
+                else if (density > 0.60) color.setHex(0xfdae61); 
+                else if (density > 0.35) color.setHex(0xa6d96a); 
+                else color.setHex(0x313695);                     
+
+                if (h > 1.2) {
+                    let sandColor = new THREE.Color(0xe8dcc4); 
+                    color.lerp(sandColor, Math.min(1, (h - 1.2) * 2));
+                }
+                colors.push(color.r, color.g, color.b);
+            }
+            
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            geometry.computeVertexNormals(); 
+            return geometry;
+        }
+
+        function initMainThree() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xeef2f5);
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.set(20, 20, 20);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+            
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true; 
+            
+            scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(30, 40, 20);
+            scene.add(dirLight);
+
+            const geometry = createTerrainGeometry(30, 30, 80, 80);
+            const material = new THREE.MeshPhongMaterial({ vertexColors: true, flatShading: false, side: THREE.DoubleSide });
+            mainTerrainMesh = new THREE.Mesh(geometry, material);
+            scene.add(mainTerrainMesh);
+            scene.add(new THREE.GridHelper(30, 30, 0xcccccc, 0xdddddd).translateY(-2));
+
+            container.addEventListener('click', onMapClick, false);
+            mainAnimate();
+        }
+
+        function mainAnimate() { 
+            requestAnimationFrame(mainAnimate); 
+            if(controls) controls.update(); 
+            renderer.render(scene, camera); 
+        }
+
+        function onMapClick(event) {
+            const rect = container.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / container.clientWidth) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / container.clientHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(mainTerrainMesh);
+            if (intersects.length > 0) {
+                dispatchDroneToPoint(intersects[0].point);
+            }
+        }
+
+        function dispatchDroneToPoint(point) {
+            globalSelectedPoint.copy(point);
+            const hint = document.querySelector('.click-hint');
+            if(hint) hint.style.display = 'none';
+
+            const colIdx = Math.max(0, Math.min(4, Math.floor((point.x + 15) / 6)));
+            const rowIdx = Math.max(1, Math.min(20, Math.floor((point.z + 15) / 1.5) + 1));
+            const regionCode = String.fromCharCode(65 + colIdx) + "-" + rowIdx.toString().padStart(2, '0');
+            globalRegionCode = regionCode; 
+            const depth = (15 - point.y).toFixed(1); 
+
+            const monitorPanel = document.getElementById('map-drone-monitor');
+            monitorPanel.classList.remove('switching');
+            document.getElementById('monitor-title').innerText = `LIVE: ${regionCode} 无人机`;
+            document.getElementById('monitor-content').innerHTML = `
+                <div style="width: 100%; height: 60px; background: #111; margin-bottom: 5px; display:flex; align-items:center; justify-content:center; border:1px solid #333; border-radius:4px; font-size:10px;">
+                    [ 影像流已切至指挥舱 ]
+                </div>
+                坐标 X:${point.x.toFixed(1)}, Z:${point.z.toFixed(1)} | 深度: ${depth}m
+            `;
+
+            // 自动跳转至第二页面
+            document.querySelector('.nav-item[data-target="panel-combined"]').click();
+            syncCombinedPanel(regionCode, point, depth);
+        }
+
+        /* ================= 融合界面交互 ================= */
+        const slider = document.getElementById('time-slider');
+        const timeLabelSpan = document.getElementById('current-time-label');
+        
+        const metrics = { 
+            blueCarbon: document.getElementById('val-blue-carbon'), netCarbon: document.getElementById('val-net-carbon'),
+            temp: document.getElementById('val-temp'), sal: document.getElementById('val-salinity'), 
+            water: document.getElementById('val-water'), 
+            light: document.getElementById('val-light'), health: document.getElementById('val-health-status-text'), 
+            turb: document.getElementById('val-turbidity'), barTemp: document.getElementById('bar-temp'), 
+            barSal: document.getElementById('bar-salinity'), barWater: document.getElementById('bar-water'),
+            barLight: document.getElementById('bar-light'), barHealth: document.getElementById('bar-health'), 
+            barTurb: document.getElementById('bar-turbidity')
+        };
+        
+        let baseHealthScore = 85, baseCarbon = 11.2, baseNet = 2.8;
+        let baseTemp = 24.0, baseSal = 33.0, baseWater = 8.1, baseLight = 800, baseTurb = 5.0;
+
+        const underwaterImages = [
+            'https://images.unsplash.com/photo-1582967788606-a171c1080cb0?w=600&q=80',
+            'https://images.unsplash.com/photo-1682687982562-47422046ca8e?w=600&q=80',
+            'https://images.unsplash.com/photo-1546026423-cc46426ba658?w=600&q=80',
+            'https://images.unsplash.com/photo-1610294326581-2292f70b0cc3?w=600&q=80'
+        ];
+
+        function syncCombinedPanel(regionCode, point, depth) {
+            document.getElementById('current-zone').innerText = regionCode;
+            document.getElementById('mini-map-zone-label').innerText = "🎯 坐标锁定: " + regionCode;
+            
+            const videoBox = document.getElementById('drone-camera-feed');
+            videoBox.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center; color:#f39c12; font-family:monospace; z-index:5;">
+                    <div style="font-size:2rem; margin-bottom:10px; animation: blink 1s infinite;">📡</div>
+                    <div>寻址中...建立光通信链路</div>
+                    <div style="width:150px; height:4px; background:#333; margin:12px 0; overflow:hidden; border-radius:2px;">
+                        <div style="width:100%; height:100%; background:#f39c12; animation: loadLine 1.5s ease-in-out infinite;"></div>
+                    </div>
+                    <div style="font-size:0.8rem; color:#aaa;">Pinging 节点 ${regionCode} | 预计延迟 1800ms</div>
+                </div>
+            `;
+
+            setTimeout(() => {
+                const selectedImg = underwaterImages[Math.floor(Math.random() * underwaterImages.length)];
+                videoBox.innerHTML = `
+                    <div style="position:absolute; top:0; left:0; width:100%; height:100%; background: url('${selectedImg}') center/cover; filter: sepia(0.4) hue-rotate(140deg) brightness(0.85) contrast(1.15);"></div>
+                    <div class="scan-line"></div>
+                    <div style="position:absolute; top:10px; left:10px; z-index:3; color:#ff4757; font-family:monospace; font-weight:bold; text-shadow: 1px 1px 2px #000;">● LIVE REC</div>
+                    <div style="position:absolute; bottom:10px; right:10px; z-index:3; color:#fff; font-family:monospace; text-shadow: 1px 1px 2px #000; text-align:right;">
+                        TARGET: ${regionCode} <br> DPT: ${depth}m
+                    </div>
+                `;
+            }, 1800); 
+
+            baseHealthScore = 30 + Math.random() * 65; 
+            baseCarbon = 7.0 + Math.random() * 5.0;
+            baseNet = -1.0 + Math.random() * 4.5;
+            
+            baseTemp = 22 + Math.random() * 6; 
+            baseSal = 30 + Math.random() * 6; 
+            baseWater = 7.5 + Math.random() * 1.0;
+            baseLight = 400 + Math.random() * 800; 
+            baseTurb = 2.0 + Math.random() * 15.0; 
+
+            slider.value = 30; 
+            slider.oninput(); 
+            updateMiniMap(point);
+        }
+
+        slider.oninput = function() {
+            let day = parseInt(this.value);
+            
+            let timeStr = "";
+            if (day === 30) timeStr = "实时数据 (今天)";
+            else if (day === 0) timeStr = "1个月前";
+            else timeStr = (30 - day) + "天前";
+            timeLabelSpan.innerText = timeStr;
+            
+            let carbonVal = (baseCarbon + (day/30)*2.5).toFixed(2);
+            let netVal = (baseNet + (day/30)*1.1).toFixed(2);
+            metrics.blueCarbon.innerHTML = `${carbonVal} <span style="font-size:1rem; color:#7f8c8d;">t/ha</span>`;
+            metrics.netCarbon.innerHTML = `${netVal > 0 ? '+' : ''}${netVal} <span style="font-size:1rem; color:#7f8c8d;">t/ha</span>`;
+
+            let tempVal = (baseTemp + (day/30)*3).toFixed(1); 
+            let salVal = (baseSal + (day/30)*0.5).toFixed(1);
+            let waterVal = (baseWater + (day/30)*0.4).toFixed(1); 
+            let lightVal = (baseLight + (day/30)*200).toFixed(0); 
+            let turbVal = (baseTurb + (30-day)/30 * 5).toFixed(1); 
+            
+            metrics.temp.innerText = tempVal + "°C"; 
+            metrics.sal.innerText = salVal + " PSU"; 
+            metrics.water.innerText = waterVal; 
+            metrics.light.innerText = lightVal + " lux"; 
+            metrics.turb.innerText = turbVal + " NTU";
+            
+            metrics.barTemp.style.width = Math.min(100, (tempVal / 35) * 100) + "%"; 
+            metrics.barSal.style.width = Math.min(100, (salVal / 40) * 100) + "%"; 
+            metrics.barWater.style.width = Math.min(100, (waterVal / 10) * 100) + "%"; 
+            metrics.barLight.style.width = Math.min(100, (lightVal / 1500) * 100) + "%";
+            metrics.barTurb.style.width = Math.min(100, (turbVal / 20) * 100) + "%";
+
+            let finalScore = Math.min(100, Math.max(0, Math.floor(baseHealthScore + (day/30)*8)));
+            
+            let healthStr = ""; let healthColor = "";
+            if(finalScore >= 85) { healthStr = "优"; healthColor = "#27ae60"; }
+            else if(finalScore >= 70) { healthStr = "良"; healthColor = "#2ecc71"; }
+            else if(finalScore >= 40) { healthStr = "中"; healthColor = "#f1c40f"; }
+            else { healthStr = "差"; healthColor = "#e74c3c"; }
+            
+            metrics.health.innerText = `${healthStr}(${finalScore}%)`;
+            metrics.health.style.color = healthColor;
+            metrics.barHealth.style.width = finalScore + "%";
+            metrics.barHealth.style.background = healthColor;
+
+            updateRightWarningPanel(finalScore);
+        };
+
+        function updateRightWarningPanel(finalScore) {
+            const scoreEl = document.getElementById('warn-score');
+            const card = document.getElementById('warn-result-card');
+            const statusText = document.getElementById('warn-status-text');
+            const riskBox = document.getElementById('warn-risk-box');
+            const riskList = document.getElementById('warn-risk-list');
+
+            scoreEl.innerText = finalScore; 
+
+            if (gaugeChart) {
+                gaugeChart.setOption({
+                    series: [{ data: [{ value: finalScore, name: 'AI 综合评分' }] }]
+                });
+            }
+
+            if (finalScore >= 70) {
+                card.style.backgroundColor = "#e8f8f5"; 
+                card.style.borderColor = "#2ecc71";     
+                scoreEl.style.color = "#27ae60";
+                statusText.innerText = "生态健康与安全";
+                statusText.style.color = "#27ae60";
+                
+                document.getElementById('warn-risk-box').querySelector('h4').style.color = "#27ae60";
+                document.getElementById('warn-risk-list').style.color = "#27ae60";
+                riskBox.style.display = "none";         
+            
+            } else if (finalScore >= 40) {
+                card.style.backgroundColor = "#fcf3cf"; 
+                card.style.borderColor = "#f1c40f";     
+                scoreEl.style.color = "#d35400";        
+                statusText.innerText = "注意：生态环境波动";
+                statusText.style.color = "#d35400";
+                
+                document.getElementById('warn-risk-box').querySelector('h4').style.color = "#d35400";
+                document.getElementById('warn-risk-list').style.color = "#d35400";
+                riskList.innerHTML = `<li>净碳汇吸收效率出现明显放缓</li><li>水质pH偏酸性，需密切观测</li>`;
+                riskBox.style.display = "block";        
+
+            } else {
+                card.style.backgroundColor = "#fdedec"; 
+                card.style.borderColor = "#e74c3c";     
+                scoreEl.style.color = "#c0392b";        
+                statusText.innerText = "预警：生态退化风险显著！";
+                statusText.style.color = "#c0392b";
+                
+                document.getElementById('warn-risk-box').querySelector('h4').style.color = "#c0392b";
+                document.getElementById('warn-risk-list').style.color = "#c0392b";
+                const risks = [
+                    "净碳汇差值倒挂，海草床转为碳源",
+                    "传感器提示沉积物浑浊度严重超标",
+                    "底栖微生态失衡，根系固碳率受阻",
+                    "监测到疑似物理拖网造成的结构性破坏"
+                ];
+                let r1 = Math.floor(Math.random() * risks.length);
+                let r2 = Math.floor(Math.random() * risks.length);
+                while(r2 === r1) r2 = Math.floor(Math.random() * risks.length); 
+                riskList.innerHTML = `<li>${risks[r1]}</li><li>${risks[r2]}</li>`;
+                riskBox.style.display = "block";        
+            }
+        }
+
+        function returnToMapAndReset() {
+            document.querySelector('.nav-item[data-target="panel-map"]').click();
+        }
+
+        /* ================= 静态放大微缩图渲染 ================= */
+        let miniScene, miniCamera, miniRenderer, miniMarker;
+        const miniContainer = document.getElementById('mini-map-container');
+        
+        function initMiniThree() {
+            miniScene = new THREE.Scene();
+            miniScene.background = new THREE.Color(0xeef2f5);
+            miniCamera = new THREE.PerspectiveCamera(30, miniContainer.clientWidth / miniContainer.clientHeight, 0.1, 1000);
+            miniRenderer = new THREE.WebGLRenderer({ antialias: true });
+            miniRenderer.setSize(miniContainer.clientWidth, miniContainer.clientHeight);
+            miniContainer.appendChild(miniRenderer.domElement);
+            
+            miniScene.add(new THREE.AmbientLight(0xffffff, 0.8));
+            miniScene.add(new THREE.Mesh(createTerrainGeometry(30, 30, 40, 40), new THREE.MeshPhongMaterial({ vertexColors: true, flatShading: false })));
+            
+            const markerGeo = new THREE.SphereGeometry(0.3, 16, 16);
+            const markerMat = new THREE.MeshBasicMaterial({color: 0xe74c3c});
+            miniMarker = new THREE.Mesh(markerGeo, markerMat);
+            miniScene.add(miniMarker);
+        }
+
+        function updateMiniMap(point) {
+            if (!miniCamera) return;
+            miniMarker.position.copy(point);
+            miniMarker.position.y += 0.3;
+            miniCamera.position.set(point.x - 4, point.y + 6, point.z + 4);
+            miniCamera.lookAt(point);
+            miniRenderer.render(miniScene, miniCamera);
+        }
+
+        /* ================= 通用导航栏切换 ================= */
+        const navItems = document.querySelectorAll('.nav-item');
+        const panels = document.querySelectorAll('.panel');
+        navItems.forEach(item => {
+            item.addEventListener('click', function() {
+                navItems.forEach(n => n.classList.remove('active'));
+                panels.forEach(p => p.classList.remove('active'));
+                this.classList.add('active');
+                const target = this.getAttribute('data-target');
+                document.getElementById(target).classList.add('active');
+                document.getElementById('current-page-title').innerText = "控制台总览 - " + this.innerText.replace(/[^\u4e00-\u9fa5]/g, '');
+
+                if (target === 'panel-map') {
+                    setTimeout(() => {
+                        renderer.setSize(container.clientWidth, container.clientHeight);
+                        camera.aspect = container.clientWidth / container.clientHeight;
+                        camera.updateProjectionMatrix();
+                    }, 50);
+                } else if (target === 'panel-combined') {
+                    setTimeout(() => {
+                        miniRenderer.setSize(miniContainer.clientWidth, miniContainer.clientHeight);
+                        miniCamera.aspect = miniContainer.clientWidth / miniContainer.clientHeight;
+                        miniCamera.updateProjectionMatrix();
+                        updateMiniMap(globalSelectedPoint);
+                        
+                        if(!gaugeChart) initGaugeChart();
+                        if(gaugeChart) gaugeChart.resize();
+                    }, 50);
+                }
+            });
+        });
+        
+        window.addEventListener('resize', () => {
+            if(document.getElementById('panel-map').classList.contains('active')) {
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            }
+            if(gaugeChart && document.getElementById('panel-combined').classList.contains('active')) {
+                gaugeChart.resize();
+            }
+        });
+
+        initMainThree(); 
+        initMiniThree();
+    </script>
+</body>
+</html>
